@@ -33,6 +33,7 @@ def walk_solidity_files(
     solc_version: str,
     base_path: Optional[str] = None,
     remappings: Tuple[str] = None,
+    solc_path: str = None,
 ) -> List[Dict]:
     """Aggregate all Solidity files in the given base path.
 
@@ -44,6 +45,7 @@ def walk_solidity_files(
     :param solc_version: The solc version to use for Solidity compilation
     :param base_path: The base path to walk through from
     :param remappings: Import remappings to pass to solcx
+    :param solc_path: Path to an existing solc executable
     :return:
     """
 
@@ -70,7 +72,7 @@ def walk_solidity_files(
     for file in files:
         LOGGER.debug(f"Generating Solidity payload for {file}")
         jobs.append(
-            generate_solidity_payload(file, solc_version, remappings=remappings)
+            generate_solidity_payload(file, solc_version, remappings=remappings, solc_path=solc_path,)
         )
     return jobs
 
@@ -80,6 +82,7 @@ def generate_solidity_payload(
     version: Optional[str],
     contract: str = None,
     remappings: Tuple[str] = None,
+    solc_path: str = None,
 ) -> Dict:
     """Generate a MythX analysis request from a given Solidity file.
 
@@ -102,6 +105,7 @@ def generate_solidity_payload(
     :param version: The solc version to use for compilation
     :param contract: The contract name(s) to submit
     :param remappings: Import remappings to pass to solcx
+    :param solc_path: Path to an existing solc executable
     :return: The payload dictionary to be sent to MythX
     """
 
@@ -114,7 +118,8 @@ def generate_solidity_payload(
     if not (solc_version or version):
         # no pragma found, user needs to specify the version
         raise click.exceptions.UsageError(
-            "No pragma found - please specify a solc version with --solc-version"
+            ("No pragma found - please specify a solc version with "
+             "--solc-version or an executable with --solc-path")
         )
 
     solc_version = f"v{version or solc_version[0]}"

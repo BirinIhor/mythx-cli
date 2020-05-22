@@ -96,6 +96,12 @@ LOGGER = logging.getLogger("mythx-cli")
     default=None,
     help="Enable property verification mode",
 )
+@click.option(
+    "--solc-path",
+    type=click.Path(dir_okay=False, exists=True),
+    default=None,
+    help="Path to an existing solc executable",
+)
 @click.pass_obj
 def analyze(
     ctx,
@@ -112,6 +118,7 @@ def analyze(
     include: Tuple[str],
     remap_import: Tuple[str],
     check_properties: bool,
+    solc_path: str,
 ) -> None:
     """Analyze the given directory or arguments with MythX.
 
@@ -131,6 +138,7 @@ def analyze(
     :param include: List of contract names to send - exclude everything else
     :param remap_import: List of import remappings to pass on to solc
     :param check_properties: Enable property verification mode
+    :param solc_path: Path to an existing solc executable
     :return:
     """
 
@@ -147,6 +155,7 @@ def analyze(
     swc_blacklist = swc_blacklist or analyze_config.get("blacklist") or None
     swc_whitelist = swc_whitelist or analyze_config.get("whitelist") or None
     solc_version = solc_version or analyze_config.get("solc") or None
+    solc_path = solc_path or analyze_config.get("solc-path") or None
     include = include or analyze_config.get("contracts") or []
     remap_import = remap_import or analyze_config.get("remappings") or []
     check_properties = (
@@ -173,6 +182,7 @@ def analyze(
 
     if not target:
         if Path("truffle-config.js").exists() or Path("truffle.js").exists():
+            # Truffle project detected
             files, source_list = find_truffle_artifacts(Path.cwd())
             if not files:
                 raise click.exceptions.UsageError(
@@ -186,9 +196,10 @@ def analyze(
                 jobs.append(generate_truffle_payload(file, source_list))
 
         elif list(glob("*.sol")):
+            # recursively enumerate solidity files
             LOGGER.debug(f"Detected Solidity files in directory")
             jobs = walk_solidity_files(
-                ctx=ctx, solc_version=solc_version, remappings=remap_import
+                ctx=ctx, solc_version=solc_version, remappings=remap_import, solc_path=solc_path,
             )
         else:
             raise click.exceptions.UsageError(
@@ -202,9 +213,11 @@ def analyze(
                 include += suffix
                 suffix = suffix[0]
             if element.startswith("0x"):
+                # bytecode target detected
                 LOGGER.debug(f"Identified target {element} as bytecode")
                 jobs.append(generate_bytecode_payload(element))
             elif Path(element).is_file() and Path(element).suffix == ".sol":
+                # Solidity file target detected
                 LOGGER.debug(f"Trying to interpret {element} as a solidity file")
                 jobs.append(
                     generate_solidity_payload(
@@ -212,12 +225,15 @@ def analyze(
                         version=solc_version,
                         contract=suffix,
                         remappings=remap_import,
+                        solc_path=solc_path,
                     )
                 )
             elif Path(element).is_dir():
+                # directory target detected
                 LOGGER.debug(f"Identified target {element} as directory")
                 files, source_list = find_truffle_artifacts(Path(element))
                 if files:
+                    # directory is truffle project
                     # extract truffle artifacts if config found in target
                     LOGGER.debug(f"Identified {element} directory as truffle project")
                     jobs.extend(
@@ -234,6 +250,7 @@ def analyze(
                             solc_version,
                             base_path=element,
                             remappings=remap_import,
+                            solc_path=solc_path,
                         )
                     )
             else:
